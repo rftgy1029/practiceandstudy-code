@@ -1,0 +1,151 @@
+import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+
+void main() {
+  runApp(const WeatherApp());
+}
+
+class WeatherApp extends StatelessWidget {
+  const WeatherApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark(),
+      home: const WeatherScreen(),
+    );
+  }
+}
+
+class WeatherScreen extends StatefulWidget {
+  const WeatherScreen({super.key});
+
+  @override
+  State<WeatherScreen> createState() => _WeatherScreenState();
+}
+
+class _WeatherScreenState extends State<WeatherScreen> {
+  // ⚠️ 발급받은 공공데이터포털 디코딩 인증키를 여기에 입력하세요.
+  final String serviceKey = "YOUR_DECODING_SERVICE_KEY_HERE"; 
+  
+  String cityName = "대전광역시";
+  String temperature = "--";
+  bool isLoading = false;
+  String errorMessage = "";
+
+  Future<void> fetchKMAWeather() async {
+    setState(() {
+      isLoading = true;
+      errorMessage = "";
+    });
+
+    // 1. 기상청 API 요구 형식에 맞춰 오늘 날짜와 시간 계산
+    DateTime now = DateTime.now();
+    
+    // 초단기실황은 매시 40분에 통계가 확정되므로, 40분 전이면 이전 시간 데이터를 요청해야 안전합니다.
+    if (now.minute < 40) {
+      now = now.subtract(const Duration(hours: 1));
+    }
+    
+    String baseDate = DateFormat('yyyyMMdd').format(now);
+    String baseTime = DateFormat('HH00').format(now);
+
+    // 2. 대전 격자 좌표 (NX: 67, NY: 100) 설정 및 URL 조립
+    final String url = 'http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst'
+        '?serviceKey=$serviceKey'
+        '&pageNo=1'
+        '&numOfRows=10'
+        '&dataType=JSON'
+        '&base_date=$baseDate'
+        '&base_time=$baseTime'
+        '&nx=67'
+        '&ny=100';
+
+    try {
+      // Uri.parse를 사용할 때 인증키 안의 특수문자가 재인코딩되어 깨지는 것을 막기 위해 Uri.decodeFull 사용
+      final response = await http.get(Uri.parse(Uri.decodeFull(url)));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final items = data['response']['body']['items']['item'] as List;
+
+        // T1H 항목이 기상청 초단기실황에서 '기온'을 의미합니다.
+        final tempItem = items.firstWhere((item) => item['category'] == 'T1H', orElse: () => null);
+
+        if (tempItem != null) {
+          setState(() {
+            temperature = tempItem['obsrValue'].toString();
+            isLoading = false;
+          });
+        } else {
+          setState(() {
+            errorMessage = "기온 데이터를 찾을 수 없습니다.";
+            isLoading = false;
+          });
+        }
+      } else {
+        setState(() {
+          errorMessage = "서버 에러가 발생했습니다. (${response.statusCode})";
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        errorMessage = "데이터를 가져오지 못했습니다. 인증키를 확인해 주세요.";
+        isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    fetchKMAWeather(); // 앱 켜지자마자 대전 날씨 가져오기
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.indigo, Colors.black87],
+          ),
+        ),
+        child: Center(
+          child: isLoading
+              ? const CircularProgressIndicator(color: Colors.white)
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.cloud_queue_rounded, size: 80, color: Colors.white70),
+                    const SizedBox(height: 20),
+                    Text(cityName, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 10),
+                    Text('$temperature°C', style: const TextStyle(fontSize: 64, fontWeight: FontWeight.w300)),
+                    if (errorMessage.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      Text(errorMessage, style: const TextStyle(color: Colors.redAccent, fontSize: 14)),
+                    ],
+                    const SizedBox(height: 40),
+                    ElevatedButton.icon(
+                      onPressed: fetchKMAWeather,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('기상청 날씨 새로고침'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.indigoAccent,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
