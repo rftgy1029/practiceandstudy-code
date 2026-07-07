@@ -45,10 +45,10 @@ def get_aws_data():
                     print(f"현재 대전 기온: {tmp} C")
                     print(f"현재 습도: {hmd} %")
         else:
-            print(f"❌ API 호출 실패 (Status Code: {response.status_code})")
+            print(f" API 호출 실패 (Status Code: {response.status_code})")
             
     except Exception as e:
-        print(f"❌ 에러 발생: {e}")
+        print(f"에러 발생: {e}")
 
 if __name__ == "__main__":
     get_aws_data()
